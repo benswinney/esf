@@ -29,18 +29,22 @@ type NativeCLIOptions struct {
 	BaseURL       string
 	APIKeyEnv     string
 	EgressManaged bool
-	Timeout       time.Duration
-	Packages      []string
+	// SubscriptionToken selects a Claude subscription token (`claude setup-token`)
+	// in place of an API key. It requires EgressManaged.
+	SubscriptionToken bool
+	Timeout           time.Duration
+	Packages          []string
 }
 
 // NativeCLIHarness keeps per-run endpoint configuration in the sandbox rather
 // than mutable worker state, so concurrent runs can use different endpoints.
 type NativeCLIHarness struct {
 	*GenericCommandHarness
-	kind          string
-	endpoint      ModelEndpoint
-	egressManaged bool
-	lookupEnv     func(string) (string, bool)
+	kind              string
+	endpoint          ModelEndpoint
+	egressManaged     bool
+	subscriptionToken bool
+	lookupEnv         func(string) (string, bool)
 }
 
 func NewClaude(opts NativeCLIOptions) (*NativeCLIHarness, error) {
@@ -52,6 +56,9 @@ func NewCodex(opts NativeCLIOptions) (*NativeCLIHarness, error) {
 }
 
 func newNativeCLI(kind string, opts NativeCLIOptions) (*NativeCLIHarness, error) {
+	if opts.SubscriptionToken && (kind != "claude" || !opts.EgressManaged) {
+		return nil, fmt.Errorf("%s: a subscription token requires the claude harness with cube_egress", kind)
+	}
 	if opts.Name == "" {
 		opts.Name = kind
 	}
@@ -76,7 +83,7 @@ func newNativeCLI(kind string, opts NativeCLIOptions) (*NativeCLIHarness, error)
 		keyEnv = strings.TrimSpace(opts.APIKeyEnv)
 	}
 	h := &NativeCLIHarness{
-		kind: kind, egressManaged: opts.EgressManaged, lookupEnv: os.LookupEnv,
+		kind: kind, egressManaged: opts.EgressManaged, subscriptionToken: opts.SubscriptionToken, lookupEnv: os.LookupEnv,
 		endpoint: ModelEndpoint{Provider: provider, BaseURL: baseURL, APIKeyEnv: keyEnv},
 	}
 	if err := h.ValidateModelEndpoint(h.endpoint); err != nil {
@@ -210,7 +217,11 @@ func (h *NativeCLIHarness) Run(ctx context.Context, sb sandbox.Sandbox, task Tas
 		// Cube provides the isolation boundary, including on root-based
 		// development templates. Claude otherwise refuses permission bypass.
 		run.spec.Env["IS_SANDBOX"] = "1"
-		run.spec.Env["ANTHROPIC_API_KEY"] = key
+		if h.subscriptionToken {
+			run.spec.Env["CLAUDE_CODE_OAUTH_TOKEN"] = key
+		} else {
+			run.spec.Env["ANTHROPIC_API_KEY"] = key
+		}
 		run.spec.Env["ANTHROPIC_BASE_URL"] = endpoint.BaseURL
 		run.spec.Args = []string{
 			"--print", ModelArgsPlaceholder, "--verbose", "--output-format", "stream-json",

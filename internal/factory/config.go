@@ -229,6 +229,10 @@ type HarnessConfig struct {
 	// "cube_egress" keeps it in CubeEgress and gives the agent only a harmless
 	// placeholder; "environment" preserves the legacy in-process behavior.
 	CredentialMode string `toml:"credential_mode"`
+	// CredentialType names the credential kind: "api_key" (default) or
+	// "subscription_token" for a Claude token from `claude setup-token`. A
+	// subscription token requires type claude and credential_mode cube_egress.
+	CredentialType string `toml:"credential_type"`
 	// CatalogCache is a host path to the agent's model-catalog cache, staged
 	// into the sandbox so model resolution does not depend on the network.
 	CatalogCache string `toml:"catalog_cache"`
@@ -450,6 +454,15 @@ func (c Config) Validate() error {
 		}
 		if mode == "cube_egress" && !supportsManagedHarness(h.Type) {
 			problems = append(problems, fmt.Sprintf("harness %q: cube_egress credential mode requires unreal, opencode, pi, claude, or codex", name))
+		}
+		switch kind := strings.ToLower(strings.TrimSpace(h.CredentialType)); kind {
+		case "", "api_key":
+		case subscriptionTokenCredential:
+			if !strings.EqualFold(strings.TrimSpace(h.Type), "claude") || mode != "cube_egress" {
+				problems = append(problems, fmt.Sprintf("harness %q: credential_type subscription_token requires type claude and credential_mode = cube_egress", name))
+			}
+		default:
+			problems = append(problems, fmt.Sprintf("harness %q: credential_type must be api_key or subscription_token", name))
 		}
 		if strings.TrimSpace(h.APIKeyFile) != "" && mode != "cube_egress" {
 			problems = append(problems, fmt.Sprintf("harness %q: api_key_file requires credential_mode = cube_egress", name))
@@ -680,7 +693,8 @@ func buildNativeCLIHarness(name string, hc HarnessConfig) (*agentharness.NativeC
 	opts := agentharness.NativeCLIOptions{
 		Name: name, Binary: hc.Binary, BinarySHA256: hc.BinarySHA256, Preinstalled: hc.Preinstalled,
 		Model: hc.Model, BaseURL: hc.BaseURL, APIKeyEnv: hc.APIKeyEnv, Timeout: hc.Timeout.Std(), Packages: hc.Packages,
-		EgressManaged: strings.EqualFold(strings.TrimSpace(hc.CredentialMode), "cube_egress"),
+		EgressManaged:     strings.EqualFold(strings.TrimSpace(hc.CredentialMode), "cube_egress"),
+		SubscriptionToken: usesSubscriptionToken(hc),
 	}
 	var h *agentharness.NativeCLIHarness
 	var err error

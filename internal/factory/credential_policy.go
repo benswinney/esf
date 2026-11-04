@@ -14,7 +14,14 @@ import (
 	"github.com/mitkox/esf/internal/sandbox"
 )
 
-const cubeEgressCredentialMode = "cube_egress"
+const (
+	cubeEgressCredentialMode    = "cube_egress"
+	subscriptionTokenCredential = "subscription_token"
+)
+
+func usesSubscriptionToken(h HarnessConfig) bool {
+	return strings.EqualFold(strings.TrimSpace(h.CredentialType), subscriptionTokenCredential)
+}
 
 // runtimeNetworkForHarness resolves an operator-owned credential only inside
 // the activity worker. The value is sent directly to Cube's control plane and
@@ -66,7 +73,7 @@ func (c Config) networkForHarnessCredential(name string, h HarnessConfig, secret
 	}
 
 	header, format := "Authorization", "Bearer ${SECRET}"
-	if strings.EqualFold(strings.TrimSpace(h.Type), "claude") {
+	if strings.EqualFold(strings.TrimSpace(h.Type), "claude") && !usesSubscriptionToken(h) {
 		header, format = "x-api-key", "${SECRET}"
 	}
 	paths := []string{match.Path}
