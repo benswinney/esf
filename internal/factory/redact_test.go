@@ -208,3 +208,18 @@ func TestJSONEvidenceRedactionPreservesEncoding(t *testing.T) {
 		t.Fatalf("integer precision lost: %d", got.Count)
 	}
 }
+
+func TestCollectSecretsIncludesHarnessAccountIDFile(t *testing.T) {
+	const secret = "opaque-chatgpt-account-5432"
+	path := filepath.Join(t.TempDir(), "account-id")
+	if err := os.WriteFile(path, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Harnesses: map[string]HarnessConfig{
+		"codex": {AccountIDFile: path},
+	}}
+	r := NewRedactor(collectSecrets(cfg, nil)...)
+	if got := r.Redact("runner echoed " + secret); strings.Contains(got, secret) {
+		t.Fatalf("account_id_file secret survived redaction: %q", got)
+	}
+}

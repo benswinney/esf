@@ -43,11 +43,11 @@ func TestClaudeSubscriptionTokenUsesOAuthPlaceholder(t *testing.T) {
 	}
 }
 
-func TestSubscriptionTokenRequiresEgressAndClaude(t *testing.T) {
+func TestSubscriptionTokenRequiresEgress(t *testing.T) {
 	if _, err := NewClaude(NativeCLIOptions{SubscriptionToken: true, Timeout: time.Minute}); err == nil {
 		t.Fatal("accepted a subscription token without egress management")
 	}
-	if _, err := NewCodex(NativeCLIOptions{EgressManaged: true, SubscriptionToken: true, Timeout: time.Minute}); err == nil {
-		t.Fatal("accepted a subscription token for codex")
+	if _, err := NewCodex(NativeCLIOptions{SubscriptionToken: true, Timeout: time.Minute}); err == nil {
+		t.Fatal("accepted a codex subscription token without egress management")
 	}
 }

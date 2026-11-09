@@ -29,8 +29,9 @@ type NativeCLIOptions struct {
 	BaseURL       string
 	APIKeyEnv     string
 	EgressManaged bool
-	// SubscriptionToken selects a Claude subscription token (`claude setup-token`)
-	// in place of an API key. It requires EgressManaged.
+	// SubscriptionToken selects a subscription token in place of an API key: a
+	// Claude token from `claude setup-token`, or a ChatGPT access token for
+	// codex. It requires EgressManaged.
 	SubscriptionToken bool
 	Timeout           time.Duration
 	Packages          []string
@@ -56,8 +57,8 @@ func NewCodex(opts NativeCLIOptions) (*NativeCLIHarness, error) {
 }
 
 func newNativeCLI(kind string, opts NativeCLIOptions) (*NativeCLIHarness, error) {
-	if opts.SubscriptionToken && (kind != "claude" || !opts.EgressManaged) {
-		return nil, fmt.Errorf("%s: a subscription token requires the claude harness with cube_egress", kind)
+	if opts.SubscriptionToken && !opts.EgressManaged {
+		return nil, fmt.Errorf("%s: a subscription token requires cube_egress", kind)
 	}
 	if opts.Name == "" {
 		opts.Name = kind

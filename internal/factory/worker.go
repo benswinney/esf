@@ -302,9 +302,11 @@ func collectSecrets(cfg Config, harnesses *agentharness.Registry) []string {
 				secrets = append(secrets, value)
 			}
 		}
-		if path := strings.TrimSpace(hc.APIKeyFile); path != "" {
-			if value, err := readCredentialFile(path); err == nil {
-				secrets = append(secrets, value)
+		for _, path := range []string{hc.APIKeyFile, hc.AccountIDFile} {
+			if path = strings.TrimSpace(path); path != "" {
+				if value, err := readCredentialFile(path); err == nil {
+					secrets = append(secrets, value)
+				}
 			}
 		}
 		for _, name := range hc.PassEnv {
