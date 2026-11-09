@@ -17,6 +17,9 @@ import (
 const (
 	cubeEgressCredentialMode    = "cube_egress"
 	subscriptionTokenCredential = "subscription_token"
+	// chatgptAccountIDHeader carries the ChatGPT account ID for a codex
+	// subscription token.
+	chatgptAccountIDHeader = "chatgpt-account-id"
 )
 
 func usesSubscriptionToken(h HarnessConfig) bool {
@@ -42,13 +45,34 @@ func (c Config) runtimeNetworkForHarness(name string) (sandbox.Network, bool, er
 	if err := validateCubeEgressConfig(name, h); err != nil {
 		return sandbox.Network{}, false, err
 	}
+	if err := validateAccountIDFile(name, h); err != nil {
+		return sandbox.Network{}, false, err
+	}
 	secret, err := resolveHarnessCredential(h)
 	if err != nil {
 		return sandbox.Network{}, false, fmt.Errorf("harness %q: %w", name, err)
 	}
+	// Read the token source and the account ID file for each sandbox network,
+	// so a token that the operator refreshes on the host applies to the next
+	// run with no worker restart.
+	accountID := ""
+	if usesAccountID(h) {
+		if accountID, err = readCredentialFile(strings.TrimSpace(h.AccountIDFile)); err != nil {
+			return sandbox.Network{}, false, fmt.Errorf("harness %q: account ID: %w", name, err)
+		}
+	}
 
 	network, err := c.networkForHarnessCredential(name, h, secret)
-	return network, true, err
+	if err != nil {
+		return network, true, err
+	}
+	if accountID != "" {
+		for i := range network.Rules {
+			network.Rules[i].Action.Inject = append(network.Rules[i].Action.Inject,
+				sandbox.HeaderInjection{Header: chatgptAccountIDHeader, Secret: accountID, Format: "${SECRET}"})
+		}
+	}
+	return network, true, nil
 }
 
 func (c Config) networkForHarnessCredential(name string, h HarnessConfig, secret string) (sandbox.Network, error) {
@@ -141,6 +165,29 @@ func validateCubeEgressConfig(name string, h HarnessConfig) error {
 	}
 	if hasFile && !filepath.IsAbs(strings.TrimSpace(h.APIKeyFile)) {
 		return fmt.Errorf("harness %q: api_key_file must be an absolute path", name)
+	}
+	return nil
+}
+
+// usesAccountID reports whether the harness sends a ChatGPT account ID, which
+// only a codex subscription token does.
+func usesAccountID(h HarnessConfig) bool {
+	return strings.EqualFold(strings.TrimSpace(h.Type), "codex") && usesSubscriptionToken(h)
+}
+
+func validateAccountIDFile(name string, h HarnessConfig) error {
+	path := strings.TrimSpace(h.AccountIDFile)
+	if !usesAccountID(h) {
+		if path != "" {
+			return fmt.Errorf("harness %q: account_id_file requires type codex with credential_type subscription_token", name)
+		}
+		return nil
+	}
+	if path == "" {
+		return fmt.Errorf("harness %q: a codex subscription token requires account_id_file", name)
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("harness %q: account_id_file must be an absolute path", name)
 	}
 	return nil
 }

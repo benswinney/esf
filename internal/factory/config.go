@@ -230,9 +230,15 @@ type HarnessConfig struct {
 	// placeholder; "environment" preserves the legacy in-process behavior.
 	CredentialMode string `toml:"credential_mode"`
 	// CredentialType names the credential kind: "api_key" (default) or
-	// "subscription_token" for a Claude token from `claude setup-token`. A
-	// subscription token requires type claude and credential_mode cube_egress.
+	// "subscription_token". For type claude, a subscription token comes from
+	// `claude setup-token`. For type codex, it is a ChatGPT access token and
+	// requires account_id_file. A subscription token requires
+	// credential_mode cube_egress.
 	CredentialType string `toml:"credential_type"`
+	// AccountIDFile is an absolute, owner-only file that holds the ChatGPT
+	// account ID. CubeEgress injects it as the chatgpt-account-id header. It is
+	// required for a codex subscription token and forbidden otherwise.
+	AccountIDFile string `toml:"account_id_file"`
 	// CatalogCache is a host path to the agent's model-catalog cache, staged
 	// into the sandbox so model resolution does not depend on the network.
 	CatalogCache string `toml:"catalog_cache"`
@@ -458,11 +464,15 @@ func (c Config) Validate() error {
 		switch kind := strings.ToLower(strings.TrimSpace(h.CredentialType)); kind {
 		case "", "api_key":
 		case subscriptionTokenCredential:
-			if !strings.EqualFold(strings.TrimSpace(h.Type), "claude") || mode != "cube_egress" {
-				problems = append(problems, fmt.Sprintf("harness %q: credential_type subscription_token requires type claude and credential_mode = cube_egress", name))
+			harnessType := strings.ToLower(strings.TrimSpace(h.Type))
+			if (harnessType != "claude" && harnessType != "codex") || mode != "cube_egress" {
+				problems = append(problems, fmt.Sprintf("harness %q: credential_type subscription_token requires type claude or codex and credential_mode = cube_egress", name))
 			}
 		default:
 			problems = append(problems, fmt.Sprintf("harness %q: credential_type must be api_key or subscription_token", name))
+		}
+		if err := validateAccountIDFile(name, h); err != nil {
+			problems = append(problems, err.Error())
 		}
 		if strings.TrimSpace(h.APIKeyFile) != "" && mode != "cube_egress" {
 			problems = append(problems, fmt.Sprintf("harness %q: api_key_file requires credential_mode = cube_egress", name))

@@ -35,10 +35,10 @@ func TestSubscriptionTokenInjectsBearerAuthorization(t *testing.T) {
 	}
 }
 
-func TestSubscriptionTokenRejectedOutsideClaudeEgress(t *testing.T) {
+func TestSubscriptionTokenRejectedOutsideClaudeOrCodexEgress(t *testing.T) {
 	for name, mutate := range map[string]func(*HarnessConfig){
 		"environment mode": func(h *HarnessConfig) { h.CredentialMode = "environment" },
-		"codex":            func(h *HarnessConfig) { h.Type = "codex"; h.BaseURL = "https://api.openai.com/v1" },
+		"opencode":         func(h *HarnessConfig) { h.Type = "opencode" },
 		"unknown type":     func(h *HarnessConfig) { h.CredentialType = "session_cookie" },
 	} {
 		t.Run(name, func(t *testing.T) {

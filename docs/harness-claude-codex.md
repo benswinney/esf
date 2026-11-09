@@ -78,6 +78,23 @@ CubeEgress endpoint and credential source. Custom argv, environment
 passthrough, and host login/session files are rejected for these harness types. Interactive subscription login and
 host authentication files are not provisioned by these adapters.
 
+Both harnesses also accept `credential_type = "subscription_token"` with
+`credential_mode = "cube_egress"`. CubeEgress then injects the token as
+`Authorization: Bearer ...` for both harnesses. For Claude, the token comes
+from `claude setup-token`. For Codex, the token is a ChatGPT access token, and
+`account_id_file` is required. CubeEgress injects its value as the
+`chatgpt-account-id` header on the same two Codex rules. ESF reads both files
+each time it builds a sandbox network, so a token that the operator refreshes
+on the host applies to the next run. ESF does not refresh the token.
+
+```toml
+credential_mode = "cube_egress"
+credential_type = "subscription_token"
+base_url = "https://chatgpt.com/backend-api/codex"
+api_key_file = "/var/lib/esf/codex/access-token"
+account_id_file = "/var/lib/esf/codex/account-id"
+```
+
 Claude uses print mode with streaming JSON, disables ambient settings and MCP
 configuration, marks its process as sandboxed with `IS_SANDBOX=1`, and approves
 tools inside the Cube VM. Codex uses `exec --json`, stdin prompt input, a private `CODEX_HOME`, and an explicitly configured
