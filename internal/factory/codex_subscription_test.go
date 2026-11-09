@@ -38,27 +38,45 @@ func TestCodexSubscriptionTokenConfigValidates(t *testing.T) {
 }
 
 func TestAccountIDFileRules(t *testing.T) {
-	for name, mutate := range map[string]func(*HarnessConfig){
-		"codex subscription without account_id_file": func(h *HarnessConfig) { h.AccountIDFile = "" },
-		"codex subscription without cube_egress":     func(h *HarnessConfig) { h.CredentialMode = "environment"; h.APIKeyFile = ""; h.APIKeyEnv = "TOKEN" },
-		"account_id_file with codex api_key": func(h *HarnessConfig) {
+	type invalid struct {
+		mutate func(*HarnessConfig)
+		want   string
+	}
+	for name, tc := range map[string]invalid{
+		"codex subscription without account_id_file": {func(h *HarnessConfig) { h.AccountIDFile = "" }, "requires account_id_file"},
+		"codex subscription without cube_egress": {func(h *HarnessConfig) {
+			h.CredentialMode = "environment"
+			h.APIKeyFile = ""
+			h.APIKeyEnv = "TOKEN"
+		}, "credential_type subscription_token requires"},
+		"account_id_file with codex api_key": {func(h *HarnessConfig) {
 			h.CredentialType = "api_key"
 			h.BaseURL = "https://api.openai.com/v1"
-		},
-		"account_id_file with claude subscription": func(h *HarnessConfig) {
+		}, "account_id_file requires"},
+		"account_id_file with claude subscription": {func(h *HarnessConfig) {
 			h.Type = "claude"
 			h.Binary = "/opt/esf/agents/claude"
 			h.BaseURL = "https://api.anthropic.com"
-		},
-		"relative account_id_file": func(h *HarnessConfig) { h.AccountIDFile = "account" },
+		}, "account_id_file requires"},
+		"account_id_file with claude api_key": {func(h *HarnessConfig) {
+			h.Type = "claude"
+			h.Binary = "/opt/esf/agents/claude"
+			h.BaseURL = "https://api.anthropic.com"
+			h.CredentialType = ""
+		}, "account_id_file requires"},
+		"account_id_file with opencode": {func(h *HarnessConfig) {
+			h.Type = "opencode"
+			h.CredentialType = ""
+		}, "account_id_file requires"},
+		"relative account_id_file": {func(h *HarnessConfig) { h.AccountIDFile = "account" }, "absolute path"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := testValidConfigForCredentialPolicy()
 			hc := codexSubscriptionHarness(t)
-			mutate(&hc)
+			tc.mutate(&hc)
 			cfg.Harnesses["codex"] = hc
-			if err := cfg.Validate(); err == nil {
-				t.Fatal("accepted an invalid account_id_file combination")
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 		})
 	}

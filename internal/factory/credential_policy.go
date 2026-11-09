@@ -17,6 +17,9 @@ import (
 const (
 	cubeEgressCredentialMode    = "cube_egress"
 	subscriptionTokenCredential = "subscription_token"
+	// chatgptAccountIDHeader carries the ChatGPT account ID for a codex
+	// subscription token.
+	chatgptAccountIDHeader = "chatgpt-account-id"
 )
 
 func usesSubscriptionToken(h HarnessConfig) bool {
@@ -49,8 +52,9 @@ func (c Config) runtimeNetworkForHarness(name string) (sandbox.Network, bool, er
 	if err != nil {
 		return sandbox.Network{}, false, fmt.Errorf("harness %q: %w", name, err)
 	}
-	// Read both files for each sandbox network, so a token that the operator
-	// refreshes on the host applies to the next run with no worker restart.
+	// Read the token source and the account ID file for each sandbox network,
+	// so a token that the operator refreshes on the host applies to the next
+	// run with no worker restart.
 	accountID := ""
 	if usesAccountID(h) {
 		if accountID, err = readCredentialFile(strings.TrimSpace(h.AccountIDFile)); err != nil {
@@ -65,7 +69,7 @@ func (c Config) runtimeNetworkForHarness(name string) (sandbox.Network, bool, er
 	if accountID != "" {
 		for i := range network.Rules {
 			network.Rules[i].Action.Inject = append(network.Rules[i].Action.Inject,
-				sandbox.HeaderInjection{Header: "chatgpt-account-id", Secret: accountID, Format: "${SECRET}"})
+				sandbox.HeaderInjection{Header: chatgptAccountIDHeader, Secret: accountID, Format: "${SECRET}"})
 		}
 	}
 	return network, true, nil
