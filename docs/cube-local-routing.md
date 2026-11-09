@@ -90,3 +90,29 @@ routing rules were unchanged, and then obtained authenticated HTTP 200
 responses through Chat Completions, Anthropic Messages and Responses for
 `deepseek-v4.1-flash`. Both actual native CLIs produced verified patches.
 See the [retained qualification](../release/qualification/live-upgrade-2026-10-15.md).
+
+## Keep Cube's policy rules across a networkd restart
+
+When `systemd-networkd` starts, it deletes every routing policy rule that it
+did not create. A restart of networkd, for example by an unattended upgrade,
+then removes Cube's two `fwmark ... lookup 100` rules. The TPROXY chain and
+table 100 stay, but sandbox HTTPS no longer reaches CubeEgress. An agent then
+waits with no output until its time limit. `networkctl reload` does not remove
+the rules; a restart does.
+
+Install the [networkd drop-in](../deploy/cube/networkd-cube-egress.conf) as
+`/etc/systemd/networkd.conf.d/cube-egress.conf` and restart networkd. It sets
+`ManageForeignRoutingPolicyRules=no`, so networkd keeps rules it does not own.
+Then restart `cube-sandbox-cube-egress-net` once to restore any missing rules.
+
+The [rules check](../deploy/cube/cube-egress-rules-check.sh) reads the two
+`ip rule` entries, the table 100 route and the TPROXY rules. It prints the name
+of each missing item, exits 1, and changes nothing. Install it as
+`/usr/local/sbin/cube-egress-rules-check.sh` with its
+[service](../deploy/cube/cube-egress-rules-check.service) and
+[timer](../deploy/cube/cube-egress-rules-check.timer), then run
+`systemctl enable --now cube-egress-rules-check.timer`. The timer runs the
+check every minute; a failure shows in `systemctl status` and the journal.
+
+`cube-sandbox-cube-egress-net` shows `disabled`, but
+`cube-sandbox-control.target` wants it, so the enabled target starts it at boot.
