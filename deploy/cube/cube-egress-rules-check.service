@@ -1,0 +1,7 @@
+[Unit]
+Description=Report missing Cube egress host rules (ip rule, table 100, TPROXY)
+After=cube-sandbox-cube-egress-net.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cube-egress-rules-check.sh
