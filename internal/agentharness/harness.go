@@ -117,6 +117,10 @@ type Result struct {
 	TokensOut *int64   `json:"tokens_out,omitempty"`
 	CostUSD   *float64 `json:"cost_usd,omitempty"`
 
+	// FinalMessage is the text of the final message of the agent, when the
+	// harness reports it. Activities redact it before it leaves the worker.
+	FinalMessage string `json:"final_message,omitempty"`
+
 	// Evidence is transient, bounded harness output. Activities redact and store
 	// these allowlisted relative paths before the sandbox is destroyed. It never
 	// travels through Temporal history or replaces factory verification.

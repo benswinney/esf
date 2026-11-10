@@ -131,7 +131,7 @@ func TestNativeCLITerminalFailure(t *testing.T) {
 		{"codex", `{"type":"turn.started"}`, false},
 		{"codex", `{"type":"turn.completed"`, false},
 	} {
-		if got := nativeCLISucceeded(item.kind, item.output); got != item.success {
+		if got := scanNativeCLIStream(item.kind, item.output).success; got != item.success {
 			t.Fatalf("%s %s = %v", item.kind, item.output, got)
 		}
 	}

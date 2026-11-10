@@ -983,6 +983,9 @@ func (a *Activities) RunAgent(ctx context.Context, in RunAgentInput) (RunAgentOu
 		span.RecordError(err)
 		return RunAgentOutput{}, fmt.Errorf("run agent: %w", err)
 	}
+	// The final message is agent output, like stdout. It travels in workflow
+	// history, so it is redacted here, before it leaves the activity.
+	result.FinalMessage = a.redactor.Redact(result.FinalMessage)
 
 	// ── Hardening: read the stop signal and scan the output ────────────────
 	// Both run before any evidence is finalised and before the workflow can
