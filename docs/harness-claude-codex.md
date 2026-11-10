@@ -11,6 +11,18 @@ verification and review gates, collects the patch, and destroys the sandbox.
 The CLI's completion event never overrides failed verification. A zero exit
 without a successful terminal JSON event also fails the agent step.
 
+The same scan of the JSON stream fills the agent result. `agent/result.json`
+carries `result.final_message`, the redacted text of the final message.
+`run.json` carries `tokens_in` and `tokens_out`, and `inference_cost` for
+Claude. For Claude, the last `result` event gives these values. `tokens_in`
+adds `input_tokens`, `cache_creation_input_tokens` and
+`cache_read_input_tokens`, and `inference_cost` is `total_cost_usd`. With a
+subscription token, that cost is a list price, not money spent. For Codex,
+the last `agent_message` item gives the final message. ESF adds the usage of
+every `turn.completed` event. Codex counts cached input inside `input_tokens`
+and reports no cost. A missing or malformed value stays absent and never
+changes the success decision.
+
 Install an operator-approved **standalone Linux binary** at
 `/opt/esf/agents/claude` or `/opt/esf/agents/codex`. A Node/npm launcher cannot
 be copied by itself; put it and its dependencies in a versioned Cube template

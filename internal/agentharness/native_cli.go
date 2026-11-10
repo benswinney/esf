@@ -269,79 +269,82 @@ type nativeCLIStream struct {
 	costUSD      *float64
 }
 
-// scanNativeCLIStream reads the stream on stdout once. The success decision
-// uses the event type and status only. The final message and the usage are
-// decoded separately, so a missing or malformed value never changes the
-// decision.
+// nativeCLIEvent is one line of the stream. The success decision uses only
+// Type, Subtype and IsError. The other fields stay raw and are decoded apart,
+// so a missing or malformed value never changes the decision.
+type nativeCLIEvent struct {
+	Type         string          `json:"type"`
+	Subtype      string          `json:"subtype"`
+	IsError      bool            `json:"is_error"`
+	Result       json.RawMessage `json:"result"`
+	Usage        json.RawMessage `json:"usage"`
+	TotalCostUSD json.RawMessage `json:"total_cost_usd"`
+	Item         json.RawMessage `json:"item"`
+}
+
+// scanNativeCLIStream reads the stream on stdout once.
 func scanNativeCLIStream(kind, output string) nativeCLIStream {
 	var stream nativeCLIStream
-	success := false
+	terminal := false
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	scanner.Buffer(make([]byte, 4096), 1<<20)
 	for scanner.Scan() {
-		var event struct {
-			Type         string          `json:"type"`
-			Subtype      string          `json:"subtype"`
-			IsError      bool            `json:"is_error"`
-			Result       json.RawMessage `json:"result"`
-			Usage        json.RawMessage `json:"usage"`
-			TotalCostUSD json.RawMessage `json:"total_cost_usd"`
-			Item         json.RawMessage `json:"item"`
-		}
+		var event nativeCLIEvent
 		if json.Unmarshal(scanner.Bytes(), &event) != nil {
 			return stream
 		}
 		if kind == "claude" && event.Type == "result" {
-			stream.recordClaudeResult(event.Result, event.Usage, event.TotalCostUSD)
+			stream.recordClaudeResult(event)
 			if event.IsError || event.Subtype != "success" {
 				return stream
 			}
-			success = true
+			terminal = true
 		}
 		if kind == "codex" {
 			switch event.Type {
 			case "item.completed":
 				stream.recordCodexItem(event.Item)
 			case "turn.completed":
-				stream.recordCodexUsage(event.Usage)
-				success = true
+				stream.addCodexTurnUsage(event.Usage)
+				terminal = true
 			case "turn.failed", "error":
 				return stream
 			}
 		}
 	}
-	stream.success = scanner.Err() == nil && success
+	stream.success = scanner.Err() == nil && terminal
 	return stream
 }
 
 // recordClaudeResult keeps the final message and the usage of a Claude
-// "result" event. A later result event replaces an earlier one.
-func (s *nativeCLIStream) recordClaudeResult(result, usage, cost json.RawMessage) {
+// "result" event. The event reports totals for the session, so a later result
+// event replaces an earlier one.
+func (s *nativeCLIStream) recordClaudeResult(event nativeCLIEvent) {
 	s.finalMessage = ""
-	_ = json.Unmarshal(result, &s.finalMessage)
-	s.tokensIn, s.tokensOut, s.costUSD = nil, nil, nil
+	_ = json.Unmarshal(event.Result, &s.finalMessage)
 	var u struct {
 		Input         *int64 `json:"input_tokens"`
 		CacheCreation *int64 `json:"cache_creation_input_tokens"`
 		CacheRead     *int64 `json:"cache_read_input_tokens"`
 		Output        *int64 `json:"output_tokens"`
 	}
-	if json.Unmarshal(usage, &u) == nil {
-		if u.Input != nil {
-			// Every input token counts, including cache writes and cache reads.
-			total := *u.Input
-			for _, part := range []*int64{u.CacheCreation, u.CacheRead} {
-				if part != nil {
-					total += *part
-				}
+	s.tokensIn, s.tokensOut, s.costUSD = nil, nil, nil
+	if json.Unmarshal(event.Usage, &u) == nil && validCount(u.Input) {
+		// Every input token counts, including cache writes and cache reads.
+		total := *u.Input
+		for _, part := range []*int64{u.CacheCreation, u.CacheRead} {
+			if validCount(part) {
+				total += *part
 			}
-			s.tokensIn = &total
 		}
+		s.tokensIn = &total
+	}
+	if validCount(u.Output) {
 		s.tokensOut = u.Output
 	}
-	var usd float64
-	if json.Unmarshal(cost, &usd) == nil && len(cost) > 0 && string(cost) != "null" {
-		s.costUSD = &usd
+	var usd *float64
+	if json.Unmarshal(event.TotalCostUSD, &usd) == nil && usd != nil && *usd >= 0 {
+		s.costUSD = usd
 	}
 }
 
@@ -357,18 +360,34 @@ func (s *nativeCLIStream) recordCodexItem(item json.RawMessage) {
 	}
 }
 
-// recordCodexUsage keeps the usage of a Codex turn.completed event. Codex
-// counts cached input inside input_tokens, so input_tokens is already every
-// input token. Codex reports no cost.
-func (s *nativeCLIStream) recordCodexUsage(usage json.RawMessage) {
-	s.tokensIn, s.tokensOut = nil, nil
+// addCodexTurnUsage adds the usage of one Codex turn.completed event. Codex
+// reports the usage of that turn only, so the turns are summed. Its
+// input_tokens already includes the cached input and the cache writes. Codex
+// reports no cost.
+func (s *nativeCLIStream) addCodexTurnUsage(usage json.RawMessage) {
 	var u struct {
 		Input  *int64 `json:"input_tokens"`
 		Output *int64 `json:"output_tokens"`
 	}
-	if json.Unmarshal(usage, &u) == nil {
-		s.tokensIn, s.tokensOut = u.Input, u.Output
+	if json.Unmarshal(usage, &u) != nil {
+		return
 	}
+	s.tokensIn = addCount(s.tokensIn, u.Input)
+	s.tokensOut = addCount(s.tokensOut, u.Output)
+}
+
+func validCount(n *int64) bool { return n != nil && *n >= 0 }
+
+// addCount adds n to total. A missing or negative n leaves total unchanged.
+func addCount(total, n *int64) *int64 {
+	if !validCount(n) {
+		return total
+	}
+	sum := *n
+	if total != nil {
+		sum += *total
+	}
+	return &sum
 }
 
 var _ Harness = (*NativeCLIHarness)(nil)

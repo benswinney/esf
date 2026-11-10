@@ -98,6 +98,8 @@ func TestNativeCLIMissingOrBadUsageKeepsTheSuccessDecision(t *testing.T) {
 		{"claude error with bad usage", "claude", `{"type":"result","subtype":"error_max_turns","is_error":true,"usage":[1]}`, false},
 		{"codex without usage", "codex", `{"type":"turn.completed"}`, true},
 		{"codex with bad usage", "codex", "{\"type\":\"item.completed\",\"item\":\"bad\"}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":\"many\"}}", true},
+		{"claude with negative usage", "claude", `{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":-1,"output_tokens":-1},"total_cost_usd":-0.5}`, true},
+		{"codex with negative usage", "codex", `{"type":"turn.completed","usage":{"input_tokens":-1,"output_tokens":-1}}`, true},
 		{"codex failed turn", "codex", "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":3}}\n{\"type\":\"turn.failed\"}", false},
 	} {
 		t.Run(item.name, func(t *testing.T) {
@@ -110,4 +112,18 @@ func TestNativeCLIMissingOrBadUsageKeepsTheSuccessDecision(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCodexSumsTheUsageOfEveryTurn(t *testing.T) {
+	// Codex 0.167.0 reports the usage of each turn, not a running total.
+	stdout := `{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"first"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"second"}}
+{"type":"turn.completed","usage":{"input_tokens":30,"cached_input_tokens":20,"output_tokens":3}}`
+	result := runNativeCLIWithStdout(t, "codex", stdout)
+	if !result.Succeeded() || result.FinalMessage != "second" {
+		t.Fatalf("result = %+v", result)
+	}
+	assertCount(t, "tokens in", result.TokensIn, 130)
+	assertCount(t, "tokens out", result.TokensOut, 13)
 }
