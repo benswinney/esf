@@ -182,7 +182,7 @@ cleanup.json              destroy outcome, verification, remaining sandbox count
 agent/prompt.txt          exactly what the agent was asked
 agent/stdout.log          redacted
 agent/stderr.log          redacted
-agent/result.json         harness, command line, exit code, timings, attempt
+agent/result.json         harness, command line, exit code, timings, final message, attempt
 verification/result.json  per-gate argv, timings, exit codes, pass/fail
 verification/*.stdout     redacted per-gate output
 verification/*.stderr
